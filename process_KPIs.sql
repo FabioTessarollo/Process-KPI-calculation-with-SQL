@@ -2,17 +2,17 @@
 --for each day of the calendar, one or multiple ranges that are to consider in the KPIs calculation
 CREATE TABLE schema.process_ranges_to_conser (
 	day_id date NOT NULL,
-	work_range_start_id int4 NOT NULL,
-	work_range_end int4 NOT NULL
+	valid_range_start_id int4 NOT NULL,
+	valid_range_end int4 NOT NULL
 )
-DISTRIBUTED BY (day_id, work_range_start_id);
+DISTRIBUTED BY (day_id, valid_range_start_id);
 
 --source table of processes
 CREATE TABLE schema.process_tracking (
 	process_id varchar(50) NULL,
 	event_datetime timestamp NULL, --timestamp of the event
 	"content" varchar(50) NULL,  --event 
-	proposal_status varchar(50) NULL,  --new status of the process
+	process_status varchar(50) NULL,  --new status of the process
 	update_date timestamp NULL,
 	insert_date timestamp NULL
 )
@@ -110,20 +110,20 @@ tracking_timestamps_query as (
 , process_ranges_to_conser_1 as (
 		select 
 		day_id,
-		work_range_start_id as work_range_start_id_int,
-		work_range_end as work_range_end_int,
-		to_timestamp(to_char(day_id, 'YYYYMMDD') || lpad(work_range_start_id::varchar(2), 2, '0'), 'YYYYMMDDHH24') as work_range_start_id
-		to_timestamp(to_char(day_id, 'YYYYMMDD') || lpad(work_range_end::varchar(2), 2, '0'), 'YYYYMMDDHH24') as work_range_end,
+		valid_range_start_id as valid_range_start_id_int,
+		valid_range_end as valid_range_end_int,
+		to_timestamp(to_char(day_id, 'YYYYMMDD') || lpad(valid_range_start_id::varchar(2), 2, '0'), 'YYYYMMDDHH24') as valid_range_start_id
+		to_timestamp(to_char(day_id, 'YYYYMMDD') || lpad(valid_range_end::varchar(2), 2, '0'), 'YYYYMMDDHH24') as valid_range_end,
 		from schema.process_ranges_to_conser
 ) 
 , process_ranges_to_conser as (
 		select 
 		day_id,
-		work_range_end - work_range_start_id as working_hours,
-		work_range_start_id_int,
-		work_range_end_int,
-		work_range_start_id,
-		work_range_end
+		valid_range_end - valid_range_start_id as validing_hours,
+		valid_range_start_id_int,
+		valid_range_end_int,
+		valid_range_start_id,
+		valid_range_end
 		from process_ranges_to_conser_1
 )  
 -- calculation of intervals (--) for the ranges (__) containing T0 and T1:  |_____T0----| |________| |________| |----T1_____|
@@ -132,103 +132,103 @@ tracking_timestamps_query as (
 select 
     tracking_timestamps.*,
     --T1T0
-		(case when T0_day.work_range_end > tracking_timestamps.T0 then T0_day.work_range_end - tracking_timestamps.T0 else '0 Seconds'::interval end)
-	  + (case when tracking_timestamps.T1 > T1_day.work_range_start_id then tracking_timestamps.T1 - T1_day.work_range_start_id else '0 Seconds'::interval end) 
+		(case when T0_day.valid_range_end > tracking_timestamps.T0 then T0_day.valid_range_end - tracking_timestamps.T0 else '0 Seconds'::interval end)
+	  + (case when tracking_timestamps.T1 > T1_day.valid_range_start_id then tracking_timestamps.T1 - T1_day.valid_range_start_id else '0 Seconds'::interval end) 
 	  - (case when stop_first_t0.start_blocking < tracking_timestamps.T0 then stop_first_t0.end_blocking - tracking_timestamps.T0 else '0 Seconds'::interval end)
-	  - (case when stop_first_t0.end_blocking > T0_day.work_range_end then T0_day.work_range_end - tracking_timestamps.T0 else '0 Seconds'::interval end)
-	  - (case when stop_first_t0.end_blocking < T0_day.work_range_end and stop_first_t0.start_blocking > T0_day.work_range_start_id
+	  - (case when stop_first_t0.end_blocking > T0_day.valid_range_end then T0_day.valid_range_end - tracking_timestamps.T0 else '0 Seconds'::interval end)
+	  - (case when stop_first_t0.end_blocking < T0_day.valid_range_end and stop_first_t0.start_blocking > T0_day.valid_range_start_id
 	  	then stop_first_t0.end_blocking - stop_first_t0.start_blocking else '0 Seconds'::interval end)
-	  - (case when stop_first_t1.start_blocking < T1_day.work_range_start_id then stop_first_t1.end_blocking - T1_day.work_range_start_id else '0 Seconds'::interval end)
-	  - (case when stop_first_t1.end_blocking > tracking_timestamps.T1 then T1_day.work_range_end - tracking_timestamps.T1 else '0 Seconds'::interval end)
-	  - (case when stop_first_t1.start_blocking > T1_day.work_range_start_id and stop_first_t1.end_blocking < tracking_timestamps.T1
+	  - (case when stop_first_t1.start_blocking < T1_day.valid_range_start_id then stop_first_t1.end_blocking - T1_day.valid_range_start_id else '0 Seconds'::interval end)
+	  - (case when stop_first_t1.end_blocking > tracking_timestamps.T1 then T1_day.valid_range_end - tracking_timestamps.T1 else '0 Seconds'::interval end)
+	  - (case when stop_first_t1.start_blocking > T1_day.valid_range_start_id and stop_first_t1.end_blocking < tracking_timestamps.T1
 	  	then stop_first_t1.end_blocking - stop_first_t1.start_blocking else '0 Seconds'::interval end)
   	as KPI_T1_T0,
   	--T2T0
-	    (case when T0_day.work_range_end > tracking_timestamps.T0 then T0_day.work_range_end - tracking_timestamps.T0 else '0 Seconds'::interval end)
-	  + (case when tracking_timestamps.T2 > T2_day.work_range_start_id then tracking_timestamps.T2 - T2_day.work_range_start_id else '0 Seconds'::interval end) 
+	    (case when T0_day.valid_range_end > tracking_timestamps.T0 then T0_day.valid_range_end - tracking_timestamps.T0 else '0 Seconds'::interval end)
+	  + (case when tracking_timestamps.T2 > T2_day.valid_range_start_id then tracking_timestamps.T2 - T2_day.valid_range_start_id else '0 Seconds'::interval end) 
 	  - (case when stop_first_t0.start_blocking < tracking_timestamps.T0 then stop_first_t0.end_blocking - tracking_timestamps.T0 else '0 Seconds'::interval end)
-	  - (case when stop_first_t0.end_blocking > T0_day.work_range_end then T0_day.work_range_end - tracking_timestamps.T0 else '0 Seconds'::interval end)
-	  - (case when stop_first_t0.end_blocking < T0_day.work_range_end and stop_first_t0.start_blocking > T0_day.work_range_start_id
+	  - (case when stop_first_t0.end_blocking > T0_day.valid_range_end then T0_day.valid_range_end - tracking_timestamps.T0 else '0 Seconds'::interval end)
+	  - (case when stop_first_t0.end_blocking < T0_day.valid_range_end and stop_first_t0.start_blocking > T0_day.valid_range_start_id
 	  	then stop_first_t0.end_blocking - stop_first_t0.start_blocking else '0 Seconds'::interval end)
-	  - (case when stop_first_t2.start_blocking < T2_day.work_range_start_id then stop_first_t2.end_blocking - T2_day.work_range_start_id else '0 Seconds'::interval end)
-	  - (case when stop_first_t2.end_blocking > tracking_timestamps.T2 then T2_day.work_range_end - tracking_timestamps.T2 else '0 Seconds'::interval end)
-	  - (case when stop_first_t2.start_blocking > T2_day.work_range_start_id and stop_first_t2.end_blocking < tracking_timestamps.T2
+	  - (case when stop_first_t2.start_blocking < T2_day.valid_range_start_id then stop_first_t2.end_blocking - T2_day.valid_range_start_id else '0 Seconds'::interval end)
+	  - (case when stop_first_t2.end_blocking > tracking_timestamps.T2 then T2_day.valid_range_end - tracking_timestamps.T2 else '0 Seconds'::interval end)
+	  - (case when stop_first_t2.start_blocking > T2_day.valid_range_start_id and stop_first_t2.end_blocking < tracking_timestamps.T2
 	  	then stop_first_t2.end_blocking - stop_first_t2.start_blocking else '0 Seconds'::interval end)
     as KPI_T2_T0,
    --T3T0
-    (case when T0_day.work_range_end > tracking_timestamps.T0 then T0_day.work_range_end - tracking_timestamps.T0 else '0 Seconds'::interval end)
-  + (case when tracking_timestamps.T3 > T3_day.work_range_start_id then tracking_timestamps.T3 - T3_day.work_range_start_id else '0 Seconds'::interval end) 
+    (case when T0_day.valid_range_end > tracking_timestamps.T0 then T0_day.valid_range_end - tracking_timestamps.T0 else '0 Seconds'::interval end)
+  + (case when tracking_timestamps.T3 > T3_day.valid_range_start_id then tracking_timestamps.T3 - T3_day.valid_range_start_id else '0 Seconds'::interval end) 
 	  - (case when stop_first_t0.start_blocking < tracking_timestamps.T0 then stop_first_t0.end_blocking - tracking_timestamps.T0 else '0 Seconds'::interval end)
-	  - (case when stop_first_t0.end_blocking > T0_day.work_range_end then T0_day.work_range_end - tracking_timestamps.T0 else '0 Seconds'::interval end)
-	  - (case when stop_first_t0.end_blocking < T0_day.work_range_end and stop_first_t0.start_blocking > T0_day.work_range_start_id
+	  - (case when stop_first_t0.end_blocking > T0_day.valid_range_end then T0_day.valid_range_end - tracking_timestamps.T0 else '0 Seconds'::interval end)
+	  - (case when stop_first_t0.end_blocking < T0_day.valid_range_end and stop_first_t0.start_blocking > T0_day.valid_range_start_id
 	  	then stop_first_t0.end_blocking - stop_first_t0.start_blocking else '0 Seconds'::interval end)
-	  - (case when stop_first_t3.start_blocking < T3_day.work_range_start_id then stop_first_t3.end_blocking - T3_day.work_range_start_id else '0 Seconds'::interval end)
-	  - (case when stop_first_t3.end_blocking > tracking_timestamps.T3 then T3_day.work_range_end - tracking_timestamps.T3 else '0 Seconds'::interval end)
-	  - (case when stop_first_t3.start_blocking > T3_day.work_range_start_id and stop_first_t3.end_blocking < tracking_timestamps.T3
+	  - (case when stop_first_t3.start_blocking < T3_day.valid_range_start_id then stop_first_t3.end_blocking - T3_day.valid_range_start_id else '0 Seconds'::interval end)
+	  - (case when stop_first_t3.end_blocking > tracking_timestamps.T3 then T3_day.valid_range_end - tracking_timestamps.T3 else '0 Seconds'::interval end)
+	  - (case when stop_first_t3.start_blocking > T3_day.valid_range_start_id and stop_first_t3.end_blocking < tracking_timestamps.T3
 	  	then stop_first_t3.end_blocking - stop_first_t3.start_blocking else '0 Seconds'::interval end)
     as KPI_T3_T0,
     
-    (case when T4_day.work_range_end > tracking_timestamps.T4 then T4_day.work_range_end - tracking_timestamps.T4 else '0 Seconds'::interval end)
-  + (case when tracking_timestamps.T5 > T5_day.work_range_start_id then tracking_timestamps.T5 - T5_day.work_range_start_id else '0 Seconds'::interval end) as KPI_T5_T4,
-  T0_day.work_range_start_id as T0_range_id,
-  T1_day.work_range_start_id as T1_range_id,
-  T2_day.work_range_start_id as T2_range_id,
-  T3_day.work_range_start_id as T3_range_id,
-  T4_day.work_range_start_id as T4_range_id,
-  T5_day.work_range_start_id as T5_range_id
+    (case when T4_day.valid_range_end > tracking_timestamps.T4 then T4_day.valid_range_end - tracking_timestamps.T4 else '0 Seconds'::interval end)
+  + (case when tracking_timestamps.T5 > T5_day.valid_range_start_id then tracking_timestamps.T5 - T5_day.valid_range_start_id else '0 Seconds'::interval end) as KPI_T5_T4,
+  T0_day.valid_range_start_id as T0_range_id,
+  T1_day.valid_range_start_id as T1_range_id,
+  T2_day.valid_range_start_id as T2_range_id,
+  T3_day.valid_range_start_id as T3_range_id,
+  T4_day.valid_range_start_id as T4_range_id,
+  T5_day.valid_range_start_id as T5_range_id
 from tracking_timestamps
 left join process_ranges_to_conser_1 T0_day
 on T0_day.day_id = tracking_timestamps.T0::date
-and T0_day.work_range_start_id_int <= tracking_timestamps.T0_int
-and T0_day.work_range_end_int > tracking_timestamps.T0_int
+and T0_day.valid_range_start_id_int <= tracking_timestamps.T0_int
+and T0_day.valid_range_end_int > tracking_timestamps.T0_int
 left join process_ranges_to_conser_1 T1_day
 on T1_day.day_id = tracking_timestamps.T1::date
-and T1_day.work_range_start_id_int <= tracking_timestamps.T1_int
-and T1_day.work_range_end_int > tracking_timestamps.T1_int
+and T1_day.valid_range_start_id_int <= tracking_timestamps.T1_int
+and T1_day.valid_range_end_int > tracking_timestamps.T1_int
 left join process_ranges_to_conser_1 T2_day
 on T2_day.day_id = tracking_timestamps.T2::date
-and t2_day.work_range_start_id_int <= tracking_timestamps.t2_int
-and t2_day.work_range_end_int > tracking_timestamps.t2_int
+and t2_day.valid_range_start_id_int <= tracking_timestamps.t2_int
+and t2_day.valid_range_end_int > tracking_timestamps.t2_int
 left join process_ranges_to_conser_1 T3_day
 on T3_day.day_id = tracking_timestamps.T3::date
-and t3_day.work_range_start_id_int <= tracking_timestamps.t3_int
-and t3_day.work_range_end_int > tracking_timestamps.t3_int
+and t3_day.valid_range_start_id_int <= tracking_timestamps.t3_int
+and t3_day.valid_range_end_int > tracking_timestamps.t3_int
 left join process_ranges_to_conser_1 T4_day
 on T4_day.day_id = tracking_timestamps.T4::date
-and t4_day.work_range_start_id_int <= tracking_timestamps.t4_int
-and t4_day.work_range_end_int > tracking_timestamps.t4_int
+and t4_day.valid_range_start_id_int <= tracking_timestamps.t4_int
+and t4_day.valid_range_end_int > tracking_timestamps.t4_int
 left join process_ranges_to_conser_1 T5_day
 on T5_day.day_id = tracking_timestamps.T5::date
-and t5_day.work_range_start_id_int <= tracking_timestamps.t5_int
-and t5_day.work_range_end_int > tracking_timestamps.t5_int
+and t5_day.valid_range_start_id_int <= tracking_timestamps.t5_int
+and t5_day.valid_range_end_int > tracking_timestamps.t5_int
 left join process_ranges_not_to_consider stop_first_t0
 on stop_first_t0.day_id = T0_day.day_id
 and stop_first_t0.end_blocking > tracking_timestamps.T0
-and stop_first_t0.start_blocking <= T0_day.work_range_end
+and stop_first_t0.start_blocking <= T0_day.valid_range_end
 and stop_first_t0.process_id = tracking_timestamps.process_id
 left join process_ranges_not_to_consider stop_first_t1
 on stop_first_t1.day_id = T1_day.day_id
-and stop_first_t1.end_blocking > T1_day.work_range_start_id
+and stop_first_t1.end_blocking > T1_day.valid_range_start_id
 and stop_first_t1.start_blocking <= tracking_timestamps.t1
 and stop_first_t1.process_id = tracking_timestamps.process_id
 left join process_ranges_not_to_consider stop_first_t2
 on stop_first_t2.day_id = T2_day.day_id
-and stop_first_t2.end_blocking > T2_day.work_range_start_id
+and stop_first_t2.end_blocking > T2_day.valid_range_start_id
 and stop_first_t2.start_blocking <= tracking_timestamps.t2
 and stop_first_t2.process_id = tracking_timestamps.process_id
 left join process_ranges_not_to_consider stop_first_t3
 on stop_first_t3.day_id = T3_day.day_id
-and stop_first_t3.end_blocking > T3_day.work_range_start_id
+and stop_first_t3.end_blocking > T3_day.valid_range_start_id
 and stop_first_t3.start_blocking <= tracking_timestamps.t3
 and stop_first_t3.process_id = tracking_timestamps.process_id
 left join process_ranges_not_to_consider stop_first_t4
 on stop_first_t4.day_id = T4_day.day_id
 and stop_first_t4.end_blocking > tracking_timestamps.T4
-and stop_first_t4.start_blocking <= T4_day.work_range_end
+and stop_first_t4.start_blocking <= T4_day.valid_range_end
 and stop_first_t4.process_id = tracking_timestamps.process_id
 left join process_ranges_not_to_consider stop_first_t5
 on stop_first_t5.day_id = T5_day.day_id
-and stop_first_t5.end_blocking > T5_day.work_range_start_id
+and stop_first_t5.end_blocking > T5_day.valid_range_start_id
 and stop_first_t5.start_blocking <= tracking_timestamps.t5
 and stop_first_t5.process_id = tracking_timestamps.process_id
 )
@@ -236,108 +236,108 @@ and stop_first_t5.process_id = tracking_timestamps.process_id
 -- for each process KPI
 , T1_T0 as (
 		select tracking_timestamps.process_id, 
-			  sum(coalesce(T1_T0.working_hours, '0 seconds'::interval))		
-			- sum(coalesce(T1_T0.work_range_end - partial_blok_start.start_blocking, '0 seconds'::interval)) 
-			- sum(coalesce(partial_blok_end.end_blocking - T1_T0.work_range_start_id, '0 seconds'::interval))	
+			  sum(coalesce(T1_T0.validing_hours, '0 seconds'::interval))		
+			- sum(coalesce(T1_T0.valid_range_end - partial_blok_start.start_blocking, '0 seconds'::interval)) 
+			- sum(coalesce(partial_blok_end.end_blocking - T1_T0.valid_range_start_id, '0 seconds'::interval))	
 		as KPI_T1_T0
 		from tracking_timestamps
 		left join process_ranges_to_conser T1_T0
-		on T1_T0.work_range_start_id > tracking_timestamps.T0
-		and T1_T0.work_range_end < tracking_timestamps.T1
+		on T1_T0.valid_range_start_id > tracking_timestamps.T0
+		and T1_T0.valid_range_end < tracking_timestamps.T1
 		left join process_ranges_not_to_consider
-		on  T1_T0.work_range_start_id > process_ranges_not_to_consider.start_blocking
-		and process_ranges_not_to_consider.end_blocking > T1_T0.work_range_end
+		on  T1_T0.valid_range_start_id > process_ranges_not_to_consider.start_blocking
+		and process_ranges_not_to_consider.end_blocking > T1_T0.valid_range_end
 		and process_ranges_not_to_consider.process_id = tracking_timestamps.process_id
 		left join process_ranges_not_to_consider partial_blok_start
-		on  T1_T0.work_range_start_id::Date = partial_blok_start.start_blocking::DATE
-		and T1_T0.work_range_start_id < partial_blok_start.start_blocking
-		and T1_T0.work_range_end > partial_blok_start.start_blocking
+		on  T1_T0.valid_range_start_id::Date = partial_blok_start.start_blocking::DATE
+		and T1_T0.valid_range_start_id < partial_blok_start.start_blocking
+		and T1_T0.valid_range_end > partial_blok_start.start_blocking
 		and partial_blok_start.process_id = tracking_timestamps.process_id
 		left join process_ranges_not_to_consider partial_blok_end
-		on  T1_T0.work_range_end::Date = partial_blok_end.end_blocking::DATE
-		and T1_T0.work_range_start_id < partial_blok_end.end_blocking
-		and T1_T0.work_range_end > partial_blok_end.end_blocking
+		on  T1_T0.valid_range_end::Date = partial_blok_end.end_blocking::DATE
+		and T1_T0.valid_range_start_id < partial_blok_end.end_blocking
+		and T1_T0.valid_range_end > partial_blok_end.end_blocking
 		and partial_blok_end.process_id = tracking_timestamps.process_id
 		where process_ranges_not_to_consider.process_id is null
 		group by tracking_timestamps.process_id
 )
 , T2_T0 as (
 		select tracking_timestamps.process_id, 
-			  sum(coalesce(T2_T0.working_hours, '0 seconds'::interval))		
-			- sum(coalesce(T2_T0.work_range_end - partial_blok_start.start_blocking, '0 seconds'::interval)) 
-			- sum(coalesce(partial_blok_end.end_blocking - T2_T0.work_range_start_id, '0 seconds'::interval))	
+			  sum(coalesce(T2_T0.validing_hours, '0 seconds'::interval))		
+			- sum(coalesce(T2_T0.valid_range_end - partial_blok_start.start_blocking, '0 seconds'::interval)) 
+			- sum(coalesce(partial_blok_end.end_blocking - T2_T0.valid_range_start_id, '0 seconds'::interval))	
 		as KPI_T2_T0
 		from tracking_timestamps
 		left join process_ranges_to_conser T2_T0
-		on T2_T0.work_range_start_id > tracking_timestamps.T0
-		and T2_T0.work_range_end < tracking_timestamps.T2
+		on T2_T0.valid_range_start_id > tracking_timestamps.T0
+		and T2_T0.valid_range_end < tracking_timestamps.T2
 		left join process_ranges_not_to_consider
-		on  T2_T0.work_range_start_id > process_ranges_not_to_consider.start_blocking
-		and process_ranges_not_to_consider.end_blocking > T2_T0.work_range_end
+		on  T2_T0.valid_range_start_id > process_ranges_not_to_consider.start_blocking
+		and process_ranges_not_to_consider.end_blocking > T2_T0.valid_range_end
 		and process_ranges_not_to_consider.process_id = tracking_timestamps.process_id
 		left join process_ranges_not_to_consider partial_blok_start
-		on  T2_T0.work_range_start_id::Date = partial_blok_start.start_blocking::DATE
-		and T2_T0.work_range_start_id < partial_blok_start.start_blocking
-		and T2_T0.work_range_end > partial_blok_start.start_blocking
+		on  T2_T0.valid_range_start_id::Date = partial_blok_start.start_blocking::DATE
+		and T2_T0.valid_range_start_id < partial_blok_start.start_blocking
+		and T2_T0.valid_range_end > partial_blok_start.start_blocking
 		and partial_blok_start.process_id = tracking_timestamps.process_id
 		left join process_ranges_not_to_consider partial_blok_end
-		on  T2_T0.work_range_end::Date = partial_blok_end.end_blocking::DATE
-		and T2_T0.work_range_start_id < partial_blok_end.end_blocking
-		and T2_T0.work_range_end > partial_blok_end.end_blocking
+		on  T2_T0.valid_range_end::Date = partial_blok_end.end_blocking::DATE
+		and T2_T0.valid_range_start_id < partial_blok_end.end_blocking
+		and T2_T0.valid_range_end > partial_blok_end.end_blocking
 		and partial_blok_end.process_id = tracking_timestamps.process_id
 		where process_ranges_not_to_consider.process_id is null
 		group by tracking_timestamps.process_id
 )
 , T3_T0 as (
 		select tracking_timestamps.process_id, 
-			  sum(coalesce(T3_T0.working_hours, '0 seconds'::interval))		
-			- sum(coalesce(T3_T0.work_range_end - partial_blok_start.start_blocking, '0 seconds'::interval)) 
-			- sum(coalesce(partial_blok_end.end_blocking - T3_T0.work_range_start_id, '0 seconds'::interval))	
+			  sum(coalesce(T3_T0.validing_hours, '0 seconds'::interval))		
+			- sum(coalesce(T3_T0.valid_range_end - partial_blok_start.start_blocking, '0 seconds'::interval)) 
+			- sum(coalesce(partial_blok_end.end_blocking - T3_T0.valid_range_start_id, '0 seconds'::interval))	
 		as KPI_T3_T0
 		from tracking_timestamps
 		left join process_ranges_to_conser T3_T0
-		on T3_T0.work_range_start_id > tracking_timestamps.T0
-		and T3_T0.work_range_end < tracking_timestamps.T3
+		on T3_T0.valid_range_start_id > tracking_timestamps.T0
+		and T3_T0.valid_range_end < tracking_timestamps.T3
 		left join process_ranges_not_to_consider
-		on  T3_T0.work_range_start_id > process_ranges_not_to_consider.start_blocking
-		and process_ranges_not_to_consider.end_blocking > T3_T0.work_range_end
+		on  T3_T0.valid_range_start_id > process_ranges_not_to_consider.start_blocking
+		and process_ranges_not_to_consider.end_blocking > T3_T0.valid_range_end
 		and process_ranges_not_to_consider.process_id = tracking_timestamps.process_id
 		left join process_ranges_not_to_consider partial_blok_start
-		on  T3_T0.work_range_start_id::Date = partial_blok_start.start_blocking::DATE
-		and T3_T0.work_range_start_id < partial_blok_start.start_blocking
-		and T3_T0.work_range_end > partial_blok_start.start_blocking
+		on  T3_T0.valid_range_start_id::Date = partial_blok_start.start_blocking::DATE
+		and T3_T0.valid_range_start_id < partial_blok_start.start_blocking
+		and T3_T0.valid_range_end > partial_blok_start.start_blocking
 		and partial_blok_start.process_id = tracking_timestamps.process_id
 		left join process_ranges_not_to_consider partial_blok_end
-		on  T3_T0.work_range_end::Date = partial_blok_end.end_blocking::DATE
-		and T3_T0.work_range_start_id < partial_blok_end.end_blocking
-		and T3_T0.work_range_end > partial_blok_end.end_blocking
+		on  T3_T0.valid_range_end::Date = partial_blok_end.end_blocking::DATE
+		and T3_T0.valid_range_start_id < partial_blok_end.end_blocking
+		and T3_T0.valid_range_end > partial_blok_end.end_blocking
 		and partial_blok_end.process_id = tracking_timestamps.process_id
 		where process_ranges_not_to_consider.process_id is null
 		group by tracking_timestamps.process_id
 )
 , T5_T4 as (
 		select tracking_timestamps.process_id, 
-			  sum(coalesce(T5_T4.working_hours, '0 seconds'::interval))		
-			- sum(coalesce(T5_T4.work_range_end - partial_blok_start.start_blocking, '0 seconds'::interval)) 
-			- sum(coalesce(partial_blok_end.end_blocking - T5_T4.work_range_start_id, '0 seconds'::interval))	
+			  sum(coalesce(T5_T4.validing_hours, '0 seconds'::interval))		
+			- sum(coalesce(T5_T4.valid_range_end - partial_blok_start.start_blocking, '0 seconds'::interval)) 
+			- sum(coalesce(partial_blok_end.end_blocking - T5_T4.valid_range_start_id, '0 seconds'::interval))	
 		as KPI_T5_T4
 		from tracking_timestamps
 		left join process_ranges_to_conser T5_T4
-		on T5_T4.work_range_start_id > tracking_timestamps.T4
-		and T5_T4.work_range_end < tracking_timestamps.T5
+		on T5_T4.valid_range_start_id > tracking_timestamps.T4
+		and T5_T4.valid_range_end < tracking_timestamps.T5
 		left join process_ranges_not_to_consider
-		on  T5_T4.work_range_start_id > process_ranges_not_to_consider.start_blocking
-		and process_ranges_not_to_consider.end_blocking > T5_T4.work_range_end
+		on  T5_T4.valid_range_start_id > process_ranges_not_to_consider.start_blocking
+		and process_ranges_not_to_consider.end_blocking > T5_T4.valid_range_end
 		and process_ranges_not_to_consider.process_id = tracking_timestamps.process_id
 		left join process_ranges_not_to_consider partial_blok_start
-		on  T5_T4.work_range_start_id::Date = partial_blok_start.start_blocking::DATE
-		and T5_T4.work_range_start_id < partial_blok_start.start_blocking
-		and T5_T4.work_range_end > partial_blok_start.start_blocking
+		on  T5_T4.valid_range_start_id::Date = partial_blok_start.start_blocking::DATE
+		and T5_T4.valid_range_start_id < partial_blok_start.start_blocking
+		and T5_T4.valid_range_end > partial_blok_start.start_blocking
 		and partial_blok_start.process_id = tracking_timestamps.process_id
 		left join process_ranges_not_to_consider partial_blok_end
-		on  T5_T4.work_range_end::Date = partial_blok_end.end_blocking::DATE
-		and T5_T4.work_range_start_id < partial_blok_end.end_blocking
-		and T5_T4.work_range_end > partial_blok_end.end_blocking
+		on  T5_T4.valid_range_end::Date = partial_blok_end.end_blocking::DATE
+		and T5_T4.valid_range_start_id < partial_blok_end.end_blocking
+		and T5_T4.valid_range_end > partial_blok_end.end_blocking
 		and partial_blok_end.process_id = tracking_timestamps.process_id
 		where process_ranges_not_to_consider.process_id is null
 		group by tracking_timestamps.process_id
