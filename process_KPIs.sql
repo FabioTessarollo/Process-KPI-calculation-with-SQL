@@ -1,4 +1,4 @@
-
+--PostgreSQL
 --for each day of the calendar, one or multiple ranges that are to consider in the KPIs calculation
 CREATE TABLE schema.process_ranges_to_conser (
 	day_id date NOT NULL,
