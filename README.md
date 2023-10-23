@@ -6,4 +6,4 @@ My algorithm is considering every possible combination, by calculating intervals
  - summing valid whole ranges between start and end of the process
  - removing not valid intervals
 
-Another approach was to flag every minute of the calendar and summing True minutes, but this was not scaling friendly, as a row for each miunute would exists.
+Another approach was to flag every minute of the calendar and summing True minutes, but this was not scaling friendly, since a row for each miunute would exist.
